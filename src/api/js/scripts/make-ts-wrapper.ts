@@ -347,7 +347,9 @@ function makeTsWrapper() {
       returnType = `Promise<${returnType}>`;
     }
 
-    let out = `${name}: ${isAsync ? 'async' : ''} function(${params.filter(p => p != null).join(', ')}): ${returnType} {
+    let out = `${fn.docstring}\n${name}: ${isAsync ? 'async' : ''} function(${params
+      .filter(p => p != null)
+      .join(', ')}): ${returnType} {
     ${prefix}`;
     if (infix === '' && suffix === '' && rv === 'ret') {
       out += `return ${invocation};`;

@@ -73,7 +73,14 @@ export type FuncParam = {
   kind?: string;
   sizeIndex?: number;
 };
-export type Func = { ret: string; cRet: string; name: string; params: FuncParam[]; nullableRet: boolean };
+export type Func = {
+  ret: string;
+  cRet: string;
+  name: string;
+  params: FuncParam[];
+  nullableRet: boolean;
+  docstring: string;
+};
 const functions: Func[] = [];
 let enums: Record<string, Record<string, number>> = Object.create(null);
 for (let file of files) {
@@ -244,6 +251,7 @@ for (let file of files) {
     }
     assert(match.groups !== undefined);
 
+    let docstring = lookBehindDocstring(lineStart, contents);
     let { ret, name, params } = match.groups;
     let parsedParams = [];
 
@@ -319,7 +327,7 @@ for (let file of files) {
     ret = aliases[ret] ?? ret;
 
     if (name in defApis) {
-      functions.push({ ret, cRet, name, params: parsedParams, nullableRet });
+      functions.push({ ret, cRet, name, params: parsedParams, nullableRet, docstring });
     }
     // only a few things are missing `def_API`; we'll skip those
   }
@@ -360,6 +368,51 @@ for (let fn of functions) {
     }
     ++idx;
   }
+}
+
+/**
+ * Return the string content of the docstring for the function at the given cursor
+ */
+function lookBehindDocstring(cursor: number, contents: string) {
+  let lineStart = contents.lastIndexOf('\n', cursor);
+  const prevLineStart = contents.lastIndexOf('\n', lineStart - 1);
+
+  // Check that previous line ends with a `*/`
+  if (!contents.substring(prevLineStart, lineStart).includes('*/')) {
+    return '';
+  }
+
+  // Find the docstring slice
+  const docstringStart = contents.lastIndexOf('/**', prevLineStart);
+  const docstringEnd = contents.indexOf('*/', docstringStart);
+
+  if (docstringStart === -1 || docstringEnd === -1) {
+    return '';
+  }
+
+  let docstring = contents.substring(docstringStart + 3, docstringEnd);
+
+  docstring = docstring
+    // Remove all indentions
+    .replace(/^\s*/gm, '* ')
+    // Convert the c-style docstring into js style
+    .replace(/\\param\s+([A-Za-z0-9_]+)/g, '@param $1')
+    .replace(/\\sa Z3_([A-Za-z0-9_]+)/g, '@see $1')
+    .replace(/\\brief\s/g, '')
+    .replace(/\\remark\s/g, '')
+    // Handle \ccode{...}
+    .replace(/\\ccode\{([^{}]+)\}/g, '`$1`')
+    // Handle \c ...
+    .replace(/\\c\s(\S+)/g, '`$1`')
+    // Handle \pre ...
+    .replace(/\\pre\s(.+)$/gm, '`$1`')
+    // Strip out `def_API` docs that are irrelevant
+    .replace(/\n\* def_API.+/gm, '')
+    // Remove trailing newlines
+    .replace(/\n\*\s*$/, '');
+
+  // console.log(cursor, docstring);
+  return `/**\n${docstring}\n*/`;
 }
 
 function eat(str: string, regex: string | RegExp) {
